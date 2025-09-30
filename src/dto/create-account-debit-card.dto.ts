@@ -1,9 +1,9 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsString } from 'class-validator';
 import { EAccountType } from 'src/enums/acccount-type.enum';
 
 export class ICreateAccountDebitCardDTO {
   @IsNumber()
-  @IsOptional()
+  @IsNotEmpty()
   balance: number;
 
   @IsString()

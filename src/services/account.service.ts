@@ -1,18 +1,20 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { ICreateAccountCrediCardDTO } from 'src/dto/create-account-credit-card.dto';
 import { ICreateAccountDebitCardDTO } from 'src/dto/create-account-debit-card.dto';
 import { EAccountType } from 'src/enums/acccount-type.enum';
 import { Account } from 'src/schemas/account.schema';
+import { Card } from 'src/schemas/card.schema';
 
 @Injectable()
 export class AccountService {
   constructor(
     @InjectModel(Account.name) private _accountModel: Model<Account>,
+    @InjectModel(Card.name) private _cardModel: Model<Card>,
     private readonly _jwtService: JwtService,
-  ) {}
+  ) { }
 
   async GetSummary(req: any) {
     let total = 0;
@@ -32,7 +34,7 @@ export class AccountService {
         .exec();
 
       products.forEach((element) => {
-        total += element.balance;
+        total += element.currentBalance;
       });
 
       return total;
@@ -48,12 +50,28 @@ export class AccountService {
 
       if (!userId) return 'Error al obtener infromación del usuario';
 
-      const products = await this._accountModel
-        .find({ userId, deleted: false })
-        .select('_id accountName accountType balance')
-        .exec();
+      const owner = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
+      const base = { deleted: false, userId: { $in: [owner, userId] } };
 
-      return products;
+      const [debitAccounts, creditAccounts] = await Promise.all([
+        this._accountModel
+          .find({ ...base, accountType: { $ne: EAccountType.CREDITO } }) //excluye tarjetas de credito
+          .select('_id accountName accountType currentBalance')
+          .lean()
+          .exec(),
+        this._accountModel
+          .find({ ...base, accountType: EAccountType.CREDITO })
+          .select('_id accountName accountType currentBalance')
+          .populate({
+            path: 'card',
+            select: '_id creditCardLimit statementCloseDay paymentDay lastDigits APR',
+            options: { lean: true },
+          })
+          .lean({ virtuals: true })
+          .exec(),
+      ]);
+
+      return { debitAccounts, creditAccounts };
     } catch (error) {
       console.error(error);
       throw error;
@@ -73,7 +91,7 @@ export class AccountService {
       const newAccount = new this._accountModel({
         userId: userId,
         accountName: description,
-        balance,
+        currentBalance: balance,
         accountType,
       });
 
@@ -94,16 +112,36 @@ export class AccountService {
       const userId = await this.getUserIdFromReq(req);
       if (!userId) return 'Error al obtener infromación del usuario';
 
-      const { balance, description, accountType } = accounData;
+      const {
+        balance,
+        description,
+        accountType,
+        limitCreditCard,
+        lastDigits,
+        APR,
+        paymentDay,
+        statementCloseDay
+      } = accounData;
 
       const newAccount = new this._accountModel({
         userId: userId,
         accountName: description,
-        balance,
+        currentBalance: balance,
         accountType,
       });
 
+      const newCard = new this._cardModel({
+        userId,
+        accountId: newAccount._id,
+        creditCardLimit: limitCreditCard,
+        lastDigits,
+        paymentDay,
+        statementCloseDay,
+        APR,
+      });
+
       await newAccount.save();
+      await newCard.save();
     } catch (error) {
       console.error('Error creating user:', error);
       return false;

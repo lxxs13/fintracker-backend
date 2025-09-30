@@ -3,6 +3,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Length,
   Max,
   Min,
 } from 'class-validator';
@@ -10,7 +11,7 @@ import { EAccountType } from 'src/enums/acccount-type.enum';
 
 export class ICreateAccountCrediCardDTO {
   @IsNumber()
-  @IsOptional()
+  @IsNotEmpty()
   balance: number;
 
   @IsString()
@@ -20,6 +21,14 @@ export class ICreateAccountCrediCardDTO {
   @IsNumber()
   @IsNotEmpty()
   accountType: EAccountType;
+
+  @IsNumber()
+  @IsNotEmpty()
+  limitCreditCard: number;
+
+  @IsNumber()
+  @IsNotEmpty()
+  lastDigits: number;
 
   @IsNumber()
   @IsNotEmpty()
