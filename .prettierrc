@@ -1,0 +1,10 @@
+{
+  "singleQuote": true,
+  "trailingComma": "all",
+  "endOfLine": "auto",
+  "rules": {
+     "@typescript-eslint/no-unsafe-call": "error",
+     "@typescript-eslint/no-unsafe-member-access": "error",
+     "@typescript-eslint/no-unsafe-assignment": "error"
+  }
+}
