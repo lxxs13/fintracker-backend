@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-misused-promises */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
@@ -21,18 +18,20 @@ export class CategoriesService {
 
     if (!userId) throw new Error('Error al obtener información del usuario');
 
-    const owner = new Types.ObjectId(userId);
-    const base = { deleted: false, userId: owner };
+    const owner = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
+    const base = { deleted: false, userId: { $in: [owner, userId] } };
 
     const [spent, income] = await Promise.all([
       this._categoryModel
         .find({ ...base, categoryType: ECategoryType.SPENT })
+        .sort({ 'categoryName': 1 })
         .select('_id categoryName iconLabel iconColor categoryType')
         .lean()
         .exec(),
       this._categoryModel
         .find({ ...base, categoryType: ECategoryType.INCOME })
         .select('_id categoryName iconLabel iconColor categoryType')
+        .sort({ 'categoryName': 1 })
         .lean()
         .exec(),
     ]);
@@ -45,7 +44,6 @@ export class CategoriesService {
     userId?: string,
     req?: any,
   ) {
-    console.log(req);
     categoryList.forEach(async (category: ICreateCategoryDTO) => {
       const newCategory = new this._categoryModel({
         userId,

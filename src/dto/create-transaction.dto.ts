@@ -1,4 +1,9 @@
-import { IsDate, IsNotEmpty, IsNumber, IsString } from 'class-validator';
+import { IsDate,
+  IsDateString,
+  IsNotEmpty,
+  IsNumber,
+  IsString 
+} from 'class-validator';
 
 export class ICreateTransactionDTO {
   @IsNumber()
@@ -9,7 +14,7 @@ export class ICreateTransactionDTO {
   @IsNotEmpty()
   description: string;
 
-  @IsDate()
+  @IsDateString()
   @IsNotEmpty()
   transactionDate: Date;
 
@@ -19,5 +24,12 @@ export class ICreateTransactionDTO {
 
   @IsString()
   @IsNotEmpty()
+  accountId: string;
+
+  @IsNumber()
+  @IsNotEmpty()
+  transactionType: number;
+
+  @IsString()
   notes: string;
 }

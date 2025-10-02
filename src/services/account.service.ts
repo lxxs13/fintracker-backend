@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -17,25 +17,23 @@ export class AccountService {
   ) { }
 
   async GetSummary(req: any) {
-    let total = 0;
-
     try {
       const userId = await this.getUserIdFromReq(req);
 
-      if (!userId) return 'Error al obtener infromación del usuario';
+      if (!userId) return 'Error al obtener información del usuario';
 
-      const products = await this._accountModel
+      const owner = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
+      const base = { deleted: false, userId: { $in: [owner, userId] } };
+
+      const debitAccount = await this._accountModel
         .find({
-          userId,
-          deleted: false,
+          ...base,
           accountType: { $ne: EAccountType.CREDITO },
         })
-        .select('balance')
+        .select('currentBalance')
         .exec();
 
-      products.forEach((element) => {
-        total += element.currentBalance;
-      });
+      const total = debitAccount.reduce((sum, debitAccount) => sum += debitAccount.currentBalance, 0);
 
       return total;
     } catch (error) {
@@ -110,7 +108,8 @@ export class AccountService {
   ): Promise<boolean | string> {
     try {
       const userId = await this.getUserIdFromReq(req);
-      if (!userId) return 'Error al obtener infromación del usuario';
+
+      if (!userId) return 'Error al obtener información del usuario';
 
       const {
         balance,
@@ -148,6 +147,28 @@ export class AccountService {
     }
 
     return true;
+  }
+
+  async UpdateAccountBalance(userId: string, accountId: string, amount: number) {
+    try {
+      let account = await this._accountModel.findOne({
+        userId,
+        _id: new Types.ObjectId(accountId),
+      }).exec();
+
+      const result = await this._accountModel.updateOne(
+        { _id: new Types.ObjectId(account?._id) },
+        { $set: {currentBalance: account?.currentBalance! - amount} }
+      );
+
+      if (result.matchedCount === 0) {
+        throw new NotFoundException('Cuenta no encontrada');
+      }
+    
+      return account?.currentBalance;
+    } catch (err) { 
+      return new NotFoundException(err);
+    }
   }
 
   private async getUserIdFromReq(req: any): Promise<string> {

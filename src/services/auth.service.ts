@@ -19,9 +19,11 @@ export class AuthService {
     const { email, password } = authInfo;
     const user = await this._userService.getUserByEmail(email);
 
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+
     const validPassword = await bcrypt.compare(password, user!.password);
 
-    if (!validPassword) throw new UnauthorizedException();
+    if (!validPassword) throw new UnauthorizedException('El usuario o contraseña son incorrectos');
 
     const payload = { sub: user!.id ?? user!._id.toString() };
 

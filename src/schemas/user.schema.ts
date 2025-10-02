@@ -3,6 +3,8 @@ import { HydratedDocument } from 'mongoose';
 
 @Schema({
   timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
 })
 export class User {
   @Prop({

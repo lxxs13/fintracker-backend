@@ -20,5 +20,6 @@ import { AccountService } from 'src/services/account.service';
   ],
   controllers: [AccountController],
   providers: [AccountService],
+  exports: [AccountService],
 })
 export class AccountModule {}

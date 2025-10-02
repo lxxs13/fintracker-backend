@@ -5,6 +5,7 @@ import { UserModule } from './modules/user.module';
 import { AuthModule } from './modules/auth.module';
 import { AccountModule } from './modules/account.module';
 import { JwtModule } from '@nestjs/jwt';
+import { TransactionModule } from './modules/transaction.module';
 
 @Module({
   imports: [
@@ -15,11 +16,12 @@ import { JwtModule } from '@nestjs/jwt';
     JwtModule.register({
       global: true,
       secret: process.env.SECRETORPRIVATEKEY,
-      signOptions: { expiresIn: '15m' },
+      signOptions: { expiresIn: '1h' },
     }),
     UserModule,
     AuthModule,
     AccountModule,
+    TransactionModule,
   ],
   controllers: [],
   providers: [],

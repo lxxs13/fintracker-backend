@@ -17,4 +17,4 @@ import { CategoriesService } from 'src/services/categories.service';
   providers: [CategoriesService],
   exports: [CategoriesService],
 })
-export class CategoriesModule {}
+export class CategoryModule {}

@@ -1,10 +1,15 @@
 import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
+import { Types } from 'mongoose';
 import { ECategoryType } from 'src/enums/category-type.enum';
 
 @Schema({
   timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
 })
 export class Category {
+  _id: Types.ObjectId;
+  
   @Prop({
     required: true,
     trim: true,
@@ -17,10 +22,12 @@ export class Category {
   categoryType: ECategoryType;
 
   @Prop({
-    required: false,
-    trim: true,
+    type: Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
   })
-  userId: string;
+  userId: Types.ObjectId;
 
   @Prop({
     required: true,

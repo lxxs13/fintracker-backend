@@ -2,7 +2,9 @@ import { Schema as MongooseSchema, Types } from 'mongoose';
 import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
 
 @Schema({
-    timestamps: true,
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
 })
 export class Card {
   @Prop({
