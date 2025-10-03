@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PipelineStage, Types } from 'mongoose';
@@ -18,13 +18,25 @@ export class TransactionService {
     private readonly _jwtService: JwtService,
   ) { }
 
-  async GetTransactions(req: any) {
+  async GetTransactions(req: any, query: any) {
     const userId = await this.getUserIdFromReq(req);
 
     if (!userId) return 'Error al obtener información del usuario';
 
+    const { startDate, endDate } = query;
+
     const owner = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
-    const base = { deleted: false, userId: { $in: [owner, userId] } };
+    const base: any = { deleted: false, userId: { $in: [owner, userId] } };
+
+    if (startDate && endDate) {
+      const start = this.toDateStrict(startDate);
+      const end = this.toDateStrict(endDate);
+
+      base.transactionDate = {
+        $gte: start,
+        $lte: end,
+      };
+    }
 
     const [total, transactionList] = await Promise.all([
       this._transactionModel.countDocuments(base),
@@ -101,6 +113,7 @@ export class TransactionService {
             iconLabel: '$category.iconLabel',
             iconColor: '$category.iconColor',
             totalSpent: 1,
+            txCount: 1,
           }
         },
         { $limit: 2 },
@@ -113,7 +126,7 @@ export class TransactionService {
 
       const totalSpend = totalDocuments.reduce((sum: number, transacction: Transaction) => sum += transacction.amount, 0);
 
-      return {totalSpend, byCategory};
+      return { totalSpend, byCategory };
     } catch (err) {
       console.error(err);
       return false;
@@ -191,5 +204,17 @@ export class TransactionService {
     const year = now.getUTCFullYear();
     const month = (now.getUTCMonth() + 1);
     return this.monthRange({ year, month });
+  }
+
+  toDateStrict(input: string | Date): Date {
+    if (input instanceof Date) return input;
+
+    const normalized = input.replace(/\//g, '-');
+
+    const d = new Date(normalized);
+    if (Number.isNaN(d.getTime())) {
+      throw new BadRequestException(`Fecha inválida: ${input}`);
+    }
+    return d;
   }
 }
