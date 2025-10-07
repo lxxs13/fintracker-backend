@@ -51,6 +51,7 @@ export class CategoriesService {
         categoryType: category.categoryType,
         iconLabel: category.iconLabel,
         iconColor: category.iconColor,
+        categoryLimit: 0,
       });
 
       await newCategory.save();

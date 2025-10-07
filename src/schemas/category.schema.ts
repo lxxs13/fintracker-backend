@@ -22,6 +22,12 @@ export class Category {
   categoryType: ECategoryType;
 
   @Prop({
+    required: true,
+    default: 0
+  })
+  categoryLimit: number;
+
+  @Prop({
     type: Types.ObjectId,
     ref: 'User',
     required: true,

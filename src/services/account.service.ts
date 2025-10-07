@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, ObjectId } from 'mongoose';
 import { ICreateAccountCrediCardDTO } from 'src/dto/create-account-credit-card.dto';
-import { ICreateAccountDebitCardDTO } from 'src/dto/create-account-debit-card.dto';
+import { ICreateEditAccountDebitCardDTO } from 'src/dto/create-account-debit-card.dto';
 import { EAccountType } from 'src/enums/acccount-type.enum';
 import { Account } from 'src/schemas/account.schema';
 import { Card } from 'src/schemas/card.schema';
@@ -78,7 +78,7 @@ export class AccountService {
 
   async CreateDebitAccount(
     req: any,
-    accounData: ICreateAccountDebitCardDTO,
+    accounData: ICreateEditAccountDebitCardDTO,
   ): Promise<boolean | string> {
     try {
       const userId = await this.getUserIdFromReq(req);
@@ -158,16 +158,104 @@ export class AccountService {
 
       const result = await this._accountModel.updateOne(
         { _id: new Types.ObjectId(account?._id) },
-        { $set: {currentBalance: account?.currentBalance! - amount} }
+        { $set: { currentBalance: account?.currentBalance! - amount } }
       );
 
       if (result.matchedCount === 0) {
         throw new NotFoundException('Cuenta no encontrada');
       }
-    
+
       return account?.currentBalance;
-    } catch (err) { 
+    } catch (err) {
       return new NotFoundException(err);
+    }
+  }
+
+  async UpdateDebitAccount(id: string, data: ICreateEditAccountDebitCardDTO) {
+    try {
+      const { description, balance, accountType } = data;
+
+      const debitAccount = await this._accountModel.updateOne(
+        { _id: id },
+        {
+          $set: {
+            accountName: description,
+            currentBalance: balance,
+            accountType: accountType,
+          },
+        }).exec();
+
+      if (debitAccount.modifiedCount === 0) {
+        throw new NotFoundException('Cuenta no encontrada');
+      }
+
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
+  }
+
+  async UpdateCreditAccount(id: string, data: ICreateAccountCrediCardDTO) {
+    try {
+
+      const {
+        balance,
+        description,
+        accountType,
+        limitCreditCard,
+        lastDigits,
+        APR,
+        paymentDay,
+        statementCloseDay
+      } = data;
+
+      const debitAccount = await this._accountModel.findOneAndUpdate(
+        { _id: id },
+        {
+          $set: {
+            accountName: description,
+            currentBalance: balance,
+            accountType: accountType,
+          },
+        }).exec();
+
+      const newCard = await this._cardModel.updateOne(
+        { _id: debitAccount?.id },
+        {
+          creditCardLimit: limitCreditCard,
+          lastDigits,
+          paymentDay,
+          statementCloseDay,
+          APR,
+        });
+
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
+  }
+
+  async DeleteAccount(id: string) {
+    try {
+      const account = await this._accountModel.updateOne(
+        { _id: id },
+        {
+          $set: {
+            deleted: true,
+          }
+        }
+      );
+
+      if (account.modifiedCount === 0) {
+        throw new NotFoundException('Cuenta no encontrada');
+      }
+
+      return true;
+    } catch (error) {
+      console.log(error);
+      return false;
     }
   }
 
