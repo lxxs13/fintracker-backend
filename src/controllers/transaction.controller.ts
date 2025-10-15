@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { UserId } from 'src/decorators/user-id.decorator';
 import { ICreateTransactionDTO } from 'src/dto/create-transaction.dto';
+import { FiltersDTO } from 'src/dto/filters.dto';
 import { TransactionService } from 'src/services/transaction.service';
 
 @Controller('transaction')
@@ -7,17 +9,31 @@ export class TransactionController {
   constructor(private _transactionService: TransactionService) { }
 
   @Get()
-  GetTransactions(@Req() req, @Query() query) {
-    return this._transactionService.GetTransactions(req, query);
+  getTransactions(
+    @UserId() userId: string, 
+    @Query() query: FiltersDTO,
+  ) {
+    return this._transactionService.getTransactions(userId, query);
   }
 
   @Get('thisMonth')
-  GetTransactiónByMonth(@Req() req) {
-    return this._transactionService.TransactionsByMonth(req);
+  getTransactiónByMonth(@UserId() userId: string) {
+    return this._transactionService.getTransactionsByMonth(userId);
   }
 
-  @Post()
-  CreateTransaction(@Req() req, @Body() transactionInfo: ICreateTransactionDTO) {
-    return this._transactionService.CreateTransaction(req, transactionInfo);
+  @Post('incomeSpentTransaction')
+  createIncomeSpentTransaction(
+    @UserId() userId: string, 
+    @Body() transactionInfo: ICreateTransactionDTO,
+  ) {
+    return this._transactionService.createIncomeSpentTransaction(userId, transactionInfo);
+  }
+
+  @Post('createTransferTransaction')
+  createTransferTransaction(
+    @UserId() userId: string, 
+    @Body() transactionInfo: ICreateTransactionDTO,
+  ) {
+    return this._transactionService.createTransferTransaction(userId, transactionInfo);
   }
 }

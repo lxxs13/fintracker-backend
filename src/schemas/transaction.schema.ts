@@ -1,5 +1,6 @@
 import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
+import { ETransactionType } from 'src/enums/transaction-type.enum';
 
 @Schema({
   timestamps: true,
@@ -20,7 +21,7 @@ export class Transaction {
   @Prop({
     type: Types.ObjectId,
     ref: 'Category',
-    required: true,
+    required: false,
     index: true
   })
   categoryId: Types.ObjectId;
@@ -48,6 +49,13 @@ export class Transaction {
     trim: true,
   })
   description: string;
+
+  @Prop({
+    type: String,
+    enum: Object.values(ETransactionType),
+    required: true,
+  })
+  transactionType: ETransactionType;
 
   @Prop({
     required: true,

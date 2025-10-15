@@ -16,7 +16,7 @@ export const initialCategories: ICreateCategoryDTO[] = [
   { categoryName: 'Servicios', categoryType: ECategoryType.SPENT, iconLabel: 'lightbulb', iconColor: 'sky' },
   { categoryName: 'Suscripciones', categoryType: ECategoryType.SPENT, iconLabel: 'subscriptions', iconColor: 'fuchsia' },
   { categoryName: 'Transporte', categoryType: ECategoryType.SPENT, iconLabel: 'transportation', iconColor: 'indigo' },
-
+  
   { categoryName: 'Beneficios del gobierno', categoryType: ECategoryType.INCOME, iconLabel: 'account_balance', iconColor: 'teal' },
   { categoryName: 'Bonos y comisiones', categoryType: ECategoryType.INCOME, iconLabel: 'finance_chip', iconColor: 'yellow' },
   { categoryName: 'Renta', categoryType: ECategoryType.INCOME, iconLabel: 'villa', iconColor: 'red' },
@@ -25,5 +25,6 @@ export const initialCategories: ICreateCategoryDTO[] = [
   { categoryName: 'Otros', categoryType: ECategoryType.INCOME, iconLabel: 'stacks', iconColor: 'purple-600' },
   { categoryName: 'Propinas', categoryType: ECategoryType.INCOME, iconLabel: 'price_change', iconColor: 'teal-600' },
   { categoryName: 'Salario', categoryType: ECategoryType.INCOME, iconLabel: 'business_center', iconColor: 'cyan-600' },
-
+  
+  { categoryName: 'Transacción', categoryType: ECategoryType.TRANSACTION, iconLabel: 'swap_horiz', iconColor: 'blue-300' },
 ];

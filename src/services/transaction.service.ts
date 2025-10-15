@@ -1,11 +1,14 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PipelineStage, Types } from 'mongoose';
 import { ICreateTransactionDTO } from 'src/dto/create-transaction.dto';
 import { Transaction } from 'src/schemas/transaction.schema';
-import { AccountService } from './account.service';
 import { Category } from 'src/schemas/category.schema';
+import { ETransactionType } from 'src/enums/transaction-type.enum';
+import { AccountService } from './account.service';
+import { ECategoryType } from 'src/enums/category-type.enum';
+import { FiltersDTO } from 'src/dto/filters.dto';
 
 @Injectable()
 export class TransactionService {
@@ -18,15 +21,10 @@ export class TransactionService {
     private readonly _jwtService: JwtService,
   ) { }
 
-  async GetTransactions(req: any, query: any) {
-    const userId = await this.getUserIdFromReq(req);
-
-    if (!userId) return 'Error al obtener información del usuario';
-
+  async getTransactions(userId: string, query: FiltersDTO) {
     const { startDate, endDate } = query;
 
-    const owner = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
-    const base: any = { deleted: false, userId: { $in: [owner, userId] } };
+    const base: any = { deleted: false, userId };
 
     if (startDate && endDate) {
       const start = this.toDateStrict(startDate);
@@ -38,39 +36,81 @@ export class TransactionService {
       };
     }
 
-    const [total, transactionList] = await Promise.all([
+    const pipeline: PipelineStage[] = [
+      { $match: base },
+      { $sort: { transactionDate: -1 } },
+      {
+        $project: {
+          _id: 1,
+          balance: '$balance',
+          amount: '$amount',
+          description: 1,
+          transactionDate: 1,
+          categoryId: 1,
+          accountId: 1,
+        },
+      },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'categoryId',
+          foreignField: '_id',
+          as: 'category',
+          pipeline: [
+            {
+              $project: {
+                _id: 1,
+                categoryName: 1,
+                iconLabel: 1,
+                iconColor: 1,
+              },
+            },
+          ],
+        },
+      },
+      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'accounts',
+          localField: 'accountId',
+          foreignField: '_id',
+          as: 'account',
+          pipeline: [
+            {
+              $project: {
+                _id: 1,
+                accountName: 1,
+              },
+            },
+          ],
+        },
+      },
+      { $unwind: { path: '$account', preserveNullAndEmptyArrays: true } },
+    ];
+
+    const [totalDocuments, transactionList] = await Promise.all([
       this._transactionModel.countDocuments(base),
-      this._transactionModel.find(base)
-        .select('_id balance amount description transactionDate categoryId accountId')
-        .sort({ 'transactionDate': 'desc' })
-        .populate({ path: 'category', select: 'categoryName iconLabel iconColor', options: { lean: true } })
-        .populate({ path: 'account', select: 'accountName', options: { lean: true } })
-        .lean({ virtuals: true })
-        .exec()
-    ]);
+      this._transactionModel.aggregate(pipeline).exec(),
+    ])
 
-    const spentTotal = transactionList.reduce((sum, transaction) => sum += transaction.amount, 0)
+    const incomeTotal = transactionList
+      .filter((element: Transaction) => element.amount > 0)
+      .reduce((sum, transaction) => sum += Math.abs(transaction.amount), 0);
 
-    return { total, spentTotal, transactionList };
+    const spentTotal = transactionList
+      .filter((element: Transaction) => element.amount < 0)
+      .reduce((sum, transaction) => sum += Math.abs(transaction.amount), 0);
+
+    return { totalDocuments, incomeTotal, spentTotal, transactionList };
   }
 
-  async TransactionsByMonth(req: any) {
+  async getTransactionsByMonth(userId: string) {
     try {
-
-      const userId = await this.getUserIdFromReq(req);
-
-      if (!userId) return 'Error al obtener información del usuario';
-
       const { start, end } = this.getMonthBounds();
-
-      const ownerOid = new Types.ObjectId(String(userId));
 
       const base = {
         deleted: false,
-        $or: [
-          { userId: ownerOid },
-          { userId: String(userId) }
-        ],
+        userId,
         transactionDate: { $gte: start, $lt: end },
       };
 
@@ -79,20 +119,8 @@ export class TransactionService {
         {
           $group: {
             _id: '$categoryId',
-            totalSpent: { $sum: '$amount' },
+            totalSpent: { $sum: { $abs: '$amount' } },
             txCount: { $sum: 1 },
-          }
-        },
-        {
-          //FIX: arreglar los schemas para que no haga la conversión de string a 
-          $addFields: {
-            _id: {
-              $cond: [
-                { $eq: [{ $type: '$_id' }, 'objectId'] },
-                '$_id',
-                { $toObjectId: '$_id' }
-              ]
-            }
           }
         },
         {
@@ -124,7 +152,8 @@ export class TransactionService {
         this._transactionModel.aggregate(pipeline).exec(),
       ]);
 
-      const totalSpend = totalDocuments.reduce((sum: number, transacction: Transaction) => sum += transacction.amount, 0);
+      const totalSpend = totalDocuments
+        .reduce((sum: number, transacction: Transaction) => sum += transacction.amount, 0);
 
       return { totalSpend, byCategory };
     } catch (err) {
@@ -133,17 +162,15 @@ export class TransactionService {
     }
   }
 
-  async CreateTransaction(req: any, transactionInfo: ICreateTransactionDTO) {
+  async createIncomeSpentTransaction(userId: string, transactionInfo: ICreateTransactionDTO) {
     try {
-      const userId = await this.getUserIdFromReq(req);
-
-      if (!userId) return 'Error al obtener información del usuario';
-
-      const currentBalance = await this._accountService.UpdateAccountBalance(userId, transactionInfo.accountId, transactionInfo.balance);
+      const amount = transactionInfo.transactionType === ETransactionType.INCOME ? transactionInfo.balance : -transactionInfo.balance;
+      const currentBalance = await this._accountService.updateAccountBalance(userId, transactionInfo.accountId, amount);
 
       const newTransaction = new this._transactionModel({
         balance: currentBalance,
-        amount: transactionInfo.balance,
+        amount,
+        transactionType: transactionInfo.transactionType,
         categoryId: transactionInfo.categoryId,
         description: transactionInfo.description,
         transactionDate: transactionInfo.transactionDate,
@@ -152,44 +179,58 @@ export class TransactionService {
       });
 
       await newTransaction.save();
-      return true;
-    } catch (err) {
-      console.error(err);
+      return newTransaction;
+    } catch (error) {
+      throw new Error(error.message)
     }
   }
 
-  private async getUserIdFromReq(req: any): Promise<string> {
-    const auth = req.headers?.['authorization'] ?? '';
-    const [scheme, raw] = String(auth).split(' ');
-
-    if (!raw || String(scheme).toLowerCase() !== 'bearer') {
-      throw new UnauthorizedException(
-        'Authorization header must be: Bearer <token>',
-      );
-    }
-
-    const token = raw.replace(/^'|'$/g, '');
-
+  async createTransferTransaction(userId: string, transactionInfo: ICreateTransactionDTO) {
     try {
-      const { sub } = await this._jwtService.verifyAsync<{ sub: string }>(
-        token,
-      );
+      const categoryId = await this._categoryModel.findOne({
+        userId,
+        categoryType: ECategoryType.TRANSACTION,
+        deleted: false,
+      })
+        .select('_id')
+        .lean()
+        .exec();
 
-      if (!sub) throw new UnauthorizedException('Token payload without sub');
+      const currentOriginAccountBalance = await this._accountService.updateAccountBalance(userId, transactionInfo.originAccount, -transactionInfo.balance);
 
-      return sub;
-    } catch (err: any) {
-      // Opcional: distinguir errores
-      if (err?.name === 'JsonWebTokenError') {
-        throw new UnauthorizedException('Invalid token signature');
-      }
+      const originTransaction = new this._transactionModel({
+        balance: currentOriginAccountBalance,
+        amount: -transactionInfo.balance,
+        transactionType: transactionInfo.transactionType,
+        categoryId: categoryId?._id,
+        description: transactionInfo.description,
+        transactionDate: transactionInfo.transactionDate,
+        accountId: transactionInfo.originAccount,
+        userId,
+      });
 
-      if (err?.name === 'TokenExpiredError') {
-        throw new UnauthorizedException('Token expired');
-      }
+      await originTransaction.save();
 
-      throw new UnauthorizedException('Invalid token');
+      const currentDestinyBalance = await this._accountService.updateAccountBalance(userId, transactionInfo.destinyAccount, transactionInfo.balance);
+
+      const destinyTransaction = new this._transactionModel({
+        balance: currentDestinyBalance,
+        amount: transactionInfo.balance,
+        transactionType: transactionInfo.transactionType,
+        categoryId: categoryId?._id,
+        description: transactionInfo.description,
+        transactionDate: transactionInfo.transactionDate,
+        accountId: transactionInfo.destinyAccount,
+        userId,
+      });
+
+      await destinyTransaction.save();
+
+      return [originTransaction, destinyTransaction];
+    } catch (error) {
+      console.error(error)
     }
+
   }
 
   monthRange({ year, month }: { year: number; month: number }) {

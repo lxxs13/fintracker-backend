@@ -1,5 +1,4 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, ObjectId } from 'mongoose';
 import { ICreateAccountCrediCardDTO } from 'src/dto/create-account-credit-card.dto';
@@ -13,17 +12,12 @@ export class AccountService {
   constructor(
     @InjectModel(Account.name) private _accountModel: Model<Account>,
     @InjectModel(Card.name) private _cardModel: Model<Card>,
-    private readonly _jwtService: JwtService,
   ) { }
 
-  async GetSummary(req: any) {
+  async getSummary(userId: string): Promise<number> {
     try {
-      const userId = await this.getUserIdFromReq(req);
 
-      if (!userId) return 'Error al obtener información del usuario';
-
-      const owner = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
-      const base = { deleted: false, userId: { $in: [owner, userId] } };
+      const base = { deleted: false, userId };
 
       const debitAccount = await this._accountModel
         .find({
@@ -37,19 +31,13 @@ export class AccountService {
 
       return total;
     } catch (error) {
-      console.error(error);
-      throw error;
+      throw new InternalServerErrorException('Failed to get account summary');
     }
   }
 
-  async GetDebitAccountsById(req: any) {
+  async getDebitAccountsById(userId: string) {
     try {
-      const userId = await this.getUserIdFromReq(req);
-
-      if (!userId) return 'Error al obtener infromación del usuario';
-
-      const owner = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : userId;
-      const base = { deleted: false, userId: { $in: [owner, userId] } };
+      const base = { deleted: false, userId };
 
       const [debitAccounts, creditAccounts] = await Promise.all([
         this._accountModel
@@ -71,46 +59,30 @@ export class AccountService {
 
       return { debitAccounts, creditAccounts };
     } catch (error) {
-      console.error(error);
-      throw error;
+      throw new InternalServerErrorException('Failed to get accounts list');
     }
   }
 
-  async CreateDebitAccount(
-    req: any,
-    accounData: ICreateEditAccountDebitCardDTO,
-  ): Promise<boolean | string> {
+  async createDebitAccount(userId: string, accounData: ICreateEditAccountDebitCardDTO): Promise<Account> {
     try {
-      const userId = await this.getUserIdFromReq(req);
-      if (!userId) return 'Error al obtener infromación del usuario';
-
       const { balance, description, accountType } = accounData;
 
       const newAccount = new this._accountModel({
-        userId: userId,
+        userId,
         accountName: description,
         currentBalance: balance,
         accountType,
       });
 
       await newAccount.save();
+      return newAccount;
     } catch (error) {
-      console.error('Error creating user:', error);
-      return false;
+      throw new InternalServerErrorException('Failed to create debit account');
     }
-
-    return true;
   }
 
-  async CreateCreditAccount(
-    req: any,
-    accounData: ICreateAccountCrediCardDTO,
-  ): Promise<boolean | string> {
+  async createCreditAccount(userId: string, accounData: ICreateAccountCrediCardDTO): Promise<{ newAccount: Account, newCard: Card }> {
     try {
-      const userId = await this.getUserIdFromReq(req);
-
-      if (!userId) return 'Error al obtener información del usuario';
-
       const {
         balance,
         description,
@@ -141,41 +113,41 @@ export class AccountService {
 
       await newAccount.save();
       await newCard.save();
-    } catch (error) {
-      console.error('Error creating user:', error);
-      return false;
-    }
 
-    return true;
+      return { newAccount, newCard };
+    } catch (error) {
+      throw new InternalServerErrorException('Failed to create credit account');
+    }
   }
 
-  async UpdateAccountBalance(userId: string, accountId: string, amount: number) {
+  async updateAccountBalance(userId: string, accountId: string, amount: number): Promise<number> {
     try {
-      let account = await this._accountModel.findOne({
-        userId,
-        _id: new Types.ObjectId(accountId),
-      }).exec();
+      let account = await this._accountModel.findOneAndUpdate(
+        {
+          userId,
+          _id: new Types.ObjectId(accountId),
+        },
+        { $inc: { currentBalance: amount } },
+        { new: true },
+      ).exec();
 
-      const result = await this._accountModel.updateOne(
-        { _id: new Types.ObjectId(account?._id) },
-        { $set: { currentBalance: account?.currentBalance! - amount } }
-      );
+      if (!account) throw new NotFoundException('Account not found');
 
-      if (result.matchedCount === 0) {
-        throw new NotFoundException('Cuenta no encontrada');
+      return account.currentBalance;
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
       }
 
-      return account?.currentBalance;
-    } catch (err) {
-      return new NotFoundException(err);
+      throw new InternalServerErrorException('Failed to update account balance');
     }
   }
 
-  async UpdateDebitAccount(id: string, data: ICreateEditAccountDebitCardDTO) {
+  async updateDebitAccount(id: string, data: ICreateEditAccountDebitCardDTO): Promise<Account> {
     try {
       const { description, balance, accountType } = data;
 
-      const debitAccount = await this._accountModel.updateOne(
+      const debitAccount = await this._accountModel.findOneAndUpdate(
         { _id: id },
         {
           $set: {
@@ -183,22 +155,21 @@ export class AccountService {
             currentBalance: balance,
             accountType: accountType,
           },
+        },
+        {
+          new: true,
         }).exec();
 
-      if (debitAccount.modifiedCount === 0) {
-        throw new NotFoundException('Cuenta no encontrada');
-      }
+      if (!debitAccount) throw new NotFoundException('Account not found');
 
-      return true;
+      return debitAccount;
     } catch (error) {
-      console.error(error);
-      return false;
+      throw new InternalServerErrorException('Failed to update debit account');
     }
   }
 
-  async UpdateCreditAccount(id: string, data: ICreateAccountCrediCardDTO) {
+  async updateCreditAccount(id: string, data: ICreateAccountCrediCardDTO): Promise<{ debitAccount: Account; newCard: Card }> {
     try {
-
       const {
         balance,
         description,
@@ -218,9 +189,14 @@ export class AccountService {
             currentBalance: balance,
             accountType: accountType,
           },
+        },
+        {
+          new: true,
         }).exec();
 
-      const newCard = await this._cardModel.updateOne(
+      if (!debitAccount) throw new NotFoundException('Account not found');
+
+      const newCard = await this._cardModel.findOneAndUpdate(
         { _id: debitAccount?.id },
         {
           creditCardLimit: limitCreditCard,
@@ -230,14 +206,15 @@ export class AccountService {
           APR,
         });
 
-      return true;
+      if (!newCard) throw new NotFoundException('Credit card not found');
+
+      return { debitAccount, newCard };
     } catch (error) {
-      console.error(error);
-      return false;
+      throw new InternalServerErrorException('Failed to update credit account');
     }
   }
 
-  async DeleteAccount(id: string) {
+  async deleteAccount(id: string): Promise<void> {
     try {
       const account = await this._accountModel.updateOne(
         { _id: id },
@@ -249,47 +226,15 @@ export class AccountService {
       );
 
       if (account.modifiedCount === 0) {
-        throw new NotFoundException('Cuenta no encontrada');
+        throw new NotFoundException('Account not found or already deleted');
       }
-
-      return true;
     } catch (error) {
-      console.log(error);
-      return false;
-    }
-  }
-
-  private async getUserIdFromReq(req: any): Promise<string> {
-    const auth = req.headers?.['authorization'] ?? '';
-    const [scheme, raw] = String(auth).split(' ');
-
-    if (!raw || String(scheme).toLowerCase() !== 'bearer') {
-      throw new UnauthorizedException(
-        'Authorization header must be: Bearer <token>',
-      );
-    }
-
-    const token = raw.replace(/^"|"$/g, '');
-
-    try {
-      const { sub } = await this._jwtService.verifyAsync<{ sub: string }>(
-        token,
-      );
-
-      if (!sub) throw new UnauthorizedException('Token payload without sub');
-
-      return sub;
-    } catch (err: any) {
-      // Opcional: distinguir errores
-      if (err?.name === 'JsonWebTokenError') {
-        throw new UnauthorizedException('Invalid token signature');
+      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error;
       }
 
-      if (err?.name === 'TokenExpiredError') {
-        throw new UnauthorizedException('Token expired');
-      }
-
-      throw new UnauthorizedException('Invalid token');
+      console.error('Error deleting account:', error);
+      throw new InternalServerErrorException('Failed to delete account');
     }
   }
 }
